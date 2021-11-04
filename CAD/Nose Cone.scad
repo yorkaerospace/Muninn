@@ -4,7 +4,7 @@ use <template/src/Fins.scad>
 use <template/src/BasicComponents.scad>
 
 // units: mm
-$fn = 100;
+$fn = 360;
 
 // Nose Cone
 {
