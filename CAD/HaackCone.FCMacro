@@ -1,0 +1,126 @@
+import FreeCAD
+from PySide import QtGui,QtCore
+import Part
+import Draft
+from math import *
+
+class HaackCone(QtGui.QWidget):
+    def __init__(self):
+        super(HaackCone, self).__init__()
+
+        # UI Fields and their default values
+        self.fields = {
+            "Dimensions":{
+                "Length": "260",
+                "Outer Diameter": "67",
+                "Wall Thickness": "2",
+            },
+            "Constants":{
+                "k": "0",
+                "Steps": "500",
+                "Angular Fill": "360"
+            },
+            "Shoulder":{
+                "Depth": "70",
+                "Diameter": "65"
+            }
+        }
+
+        layout = QtGui.QGridLayout()
+
+        self.resize(420, 380)
+        self.setWindowTitle("Haack Curve")
+
+        row = 0
+
+        # Initialize UI
+        for header in self.fields:
+            # Add headers
+            title = QtGui.QLabel(header, self)
+            layout.addWidget(title, row, 0)
+            row += 1
+            # Loop for fields under header
+            for field in self.fields[header]:
+                label = QtGui.QLabel("\t" + field, self)
+                entry = QtGui.QLineEdit(self)
+                entry.setText(self.fields[header][field])
+                self.fields[header][field] = entry
+                layout.addWidget(label, row, 0)
+                layout.addWidget(entry, row, 1)
+                row += 1
+
+        # Create and Cancel buttons
+        createButton = QtGui.QPushButton("Create Curve",self)
+        cancelButton = QtGui.QPushButton("Cancel",self)
+        layout.addWidget(createButton, row, 0)
+        layout.addWidget(cancelButton, row, 1)
+        QtCore.QObject.connect(createButton, QtCore.SIGNAL("pressed()"),self.draw)
+        QtCore.QObject.connect(cancelButton, QtCore.SIGNAL("pressed()"),self.close)
+
+        self.setLayout(layout)
+    
+    def draw(self):
+        # Get inputs from dialog
+        length = float(self.fields["Dimensions"]["Length"].text())
+        outer = float(self.fields["Dimensions"]["Outer Diameter"].text())
+        wall = float(self.fields["Dimensions"]["Wall Thickness"].text())
+
+        k = float(self.fields["Constants"]["k"].text())
+        steps = int(self.fields["Constants"]["Steps"].text())
+        fill = int(self.fields["Constants"]["Angular Fill"].text())
+
+        sh_dep = int(self.fields["Shoulder"]["Depth"].text())
+        sh_dia = float(self.fields["Shoulder"]["Diameter"].text())
+
+        
+        # Build poly to swing
+        vecs = []
+        # Outer surface of curve (Starts at tip)
+        for x in range(0, steps+1):
+            x = length * x / float(steps)
+            try:
+                theta = acos(1 - (2*x/length))
+                y = ((outer/2)/sqrt(pi)) * sqrt(theta - (sin(2*theta)/2) + k*(sin(theta)**3))
+                vecs.append(FreeCAD.Vector(x,y,0))
+            except Exception as e:
+                print(e)
+        
+        # Shoulder
+        vecs.append(FreeCAD.Vector(length, sh_dia/2))
+        vecs.append(FreeCAD.Vector(length + sh_dep, sh_dia/2))
+        vecs.append(FreeCAD.Vector(length + sh_dep, sh_dia/2 - wall))
+        vecs.append(FreeCAD.Vector(length, sh_dia/2 - wall))
+        
+        # Inner surface
+        length -= wall*4
+        inner = outer - 2*wall
+        for x in range(steps, -1, -1):
+            x = length * x / float(steps)
+            try:
+                theta = acos(1 - (2*x/length))
+                y = ((inner/2)/sqrt(pi)) * sqrt(theta - (sin(2*theta)/2) + k*(sin(theta)**3))
+                # Stop tapering once shoulder diameter is reached
+                y = min(sh_dia/2 - wall, y)
+                vecs.append(FreeCAD.Vector(x+wall*4,y,0))
+            except Exception as e:
+                print(e)
+        
+        # Close the polygon
+        vecs.append(vecs[0]) 
+
+        # Build the wireframe & face
+        wire = Part.makePolygon(vecs)
+        face = Part.Face(wire)
+        # Swing face around to create the cone
+        solid = face.revolve(FreeCAD.Vector(0,0,0),FreeCAD.Vector(1,0,0),fill)
+        # Show the result
+        Part.show(solid)
+
+        # Hide the dialog
+        self.hide()
+
+    def close(self):
+        self.hide()
+
+cone = HaackCone()
+cone.show()
